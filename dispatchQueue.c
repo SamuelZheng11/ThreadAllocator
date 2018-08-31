@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 sem_t mutex;
+static int numberOfTasks;
 
 // singly linked list
 typedef struct {
@@ -14,48 +15,27 @@ typedef struct {
 } sllNode;
 
 dispatch_queue_t *dispatch_queue_create(queue_type_t queueType) {
-    dispatch_queue_t queue;
-    queue.queue_type = queueType;
+    dispatch_queue_t *queue = (dispatch_queue_t *) malloc(sizeof(dispatch_queue_t));
+    queue->queue_type = queueType;
+    return queue;
 }
 
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    return free(queue);
+    return free(&queue);
 }
 
-task_t* task_create(void (* work)(void *), void *param, char* name) {
-    task_t* task = (task_t*) malloc(sizeof(task_t));
+task_t *task_create(void (* work)(void *), void *param, char* name) {
+    task_t *task = (task_t *) malloc(sizeof(task_t));
     *task->name = *name;
     task->work = work;
     task->params = param;
-    task->type = NULL;
-    return &task;
+    task->type = ASYNC;
+    return task;
 }
 
-void pollSemaphore(){
-    while(1){
-        sem_wait();
-    }
-}
-
-void dispatch_async(dispatch_queue_t *queue, task_t *task) {
-    // create a semaphore
-    sem_init(&mutex, 0, 0);
-
-    for(int i = 0; i < get_nprocs_conf()){
-        pthread_create(&thread_id, NULL, void (*pollSemaphore)(void), NULL);
-    }
-
-    switch(queue->queue_type){
-        case CONCURRENT:
-            dispatch_concurrent_async(task);
-
-        case SERIAL:
-            dispatch_serial_async(task);
-
-        // If the dispatch type is neither concurrent nor serial then exit the program with failure status
-        default:
-            exit(EXIT_FAILURE);
-    }
+void *pollSemaphore(){
+    
+    sem_wait(&mutex);
 }
 
 void dispatch_concurrent_async(task_t *task) {
@@ -66,27 +46,60 @@ void dispatch_serial_async(task_t *task) {
 
 }
 
-int owl(int num)
-{
-    return num+1;
+int dispatch_sync(dispatch_queue_t *queue, task_t *task){
+    return 0;
 }
 
-typedef struct {
-    int x;
-    int y;
-} Coordinate;
+int dispatch_async(dispatch_queue_t *queue, task_t *task) {
+    // create a semaphore
+    sem_init(&mutex, 0, 0);
 
-int main(void)
-{
-    int a = 5;
-    int (*the_func_pointer_name)(int);
-    the_func_pointer_name = owl;
-    int b = the_func_pointer_name(5);
-    printf("%d\n", b);
-    int* x = &b;
-    *x = 2;
-    x = &a;
-    Coordinate* d = (Coordinate*) malloc(sizeof(Coordinate));
-    d->x = 4;
-    d->y = NULL;
+    // break statements needed otherwise C will execute all enum cases (ie both concurrent and serial are executed)
+    switch(queue->queue_type){
+    case CONCURRENT:
+        dispatch_concurrent_async(task);
+        break;
+
+    case SERIAL:
+        dispatch_serial_async(task);
+        break;
+
+    // If the dispatch type is neither concurrent nor serial then exit the program with failure status
+    default:
+        exit(EXIT_FAILURE);
+        printf("EXIT_FAILURE\n");
+    }
+    printf("working\n");
+
+    // generate threads and execute the tasks on the semaphore queue
+    for(int i = 1; i <= get_nprocs_conf(); i++){
+        pthread_create(i, NULL, pollSemaphore, NULL);
+    }
+
+    return 0;
 }
+
+// int owl(int num)
+// {
+//     return num+1;
+// }
+
+// typedef struct {
+//     int x;
+//     int y;
+// } Coordinate;
+
+// int main(void)
+// {
+//     int a = 5;
+//     int (*the_func_pointer_name)(int);
+//     the_func_pointer_name = owl;
+//     int b = the_func_pointer_name(5);
+//     printf("%d\n", b);
+//     int* x = &b;
+//     *x = 2;
+//     x = &a;
+//     Coordinate* d = (Coordinate*) malloc(sizeof(Coordinate));
+//     d->x = 4;
+//     d->y = NULL;
+// }
