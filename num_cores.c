@@ -6,6 +6,6 @@
 
 int main(int argc, char** argv) {
     // create a concurrent dispatch queue
-    printf("This program has access to %i number of cores\n", get_nprocs_conf());
+    printf("This machine has %i cores.\n", get_nprocs_conf());
     return 0;
 }
