@@ -31,9 +31,19 @@ task_t* task_create(void (* work)(void *), void *param, char* name) {
     return &task;
 }
 
+void pollSemaphore(){
+    while(1){
+        sem_wait();
+    }
+}
+
 void dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // create a semaphore
     sem_init(&mutex, 0, 0);
+
+    for(int i = 0; i < get_nprocs_conf()){
+        pthread_create(&thread_id, NULL, void (*pollSemaphore)(void), NULL);
+    }
 
     switch(queue->queue_type){
         case CONCURRENT:
