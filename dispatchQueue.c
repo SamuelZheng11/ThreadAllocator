@@ -72,7 +72,9 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // generate threads and execute the tasks on the semaphore queue
     int i;
     for(i = 0; i < get_nprocs_conf(); i++){
-        pthread_create(i , NULL, pollSemaphore, NULL);
+        printf("working\n");
+        pthread_t *thread = (pthread_t *) malloc(sizeof(pthread_t));
+        pthread_create(thread , NULL, pollSemaphore, NULL);
     }
 
     return 0;
