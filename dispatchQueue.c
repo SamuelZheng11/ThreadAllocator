@@ -3,12 +3,23 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+typedef struct typedLinkedList {
+    queue_type_t queueType;
+    struct node * next;
+} typedLinkedList_t;
+
+// ToDo
 dispatch_queue_t *dispatch_queue_create(queue_type_t queueType) {
-    dispatch_queue_t *queue;
-    return dispatch_queue_create(CONCURRENT);
+    dispatch_queue_t queue;
+    queue.queue_type = queueType;
 }
 
+// ToDo
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    dispatch_queue_t *queue;
-    dispatch_queue_destroy(queue);
+    return null;
+}
+
+// ToDo
+task_t *task_create(void (* work)(void *), void *param, char* name) {
+
 }
