@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <sys/sysinfo.h>
 #include <unistd.h>
 
 sem_t mutex;
@@ -21,7 +22,7 @@ dispatch_queue_t *dispatch_queue_create(queue_type_t queueType) {
 }
 
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    return free(&queue);
+    return free(queue);
 }
 
 task_t *task_create(void (* work)(void *), void *param, char* name) {
@@ -34,7 +35,6 @@ task_t *task_create(void (* work)(void *), void *param, char* name) {
 }
 
 void *pollSemaphore(){
-    
     sem_wait(&mutex);
 }
 
@@ -67,13 +67,12 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // If the dispatch type is neither concurrent nor serial then exit the program with failure status
     default:
         exit(EXIT_FAILURE);
-        printf("EXIT_FAILURE\n");
     }
-    printf("working\n");
 
     // generate threads and execute the tasks on the semaphore queue
-    for(int i = 1; i <= get_nprocs_conf(); i++){
-        pthread_create(i, NULL, pollSemaphore, NULL);
+    int i;
+    for(i = 0; i < get_nprocs_conf(); i++){
+        pthread_create(i , NULL, pollSemaphore, NULL);
     }
 
     return 0;
