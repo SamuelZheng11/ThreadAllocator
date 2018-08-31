@@ -8,15 +8,13 @@ typedef struct typedLinkedList {
     struct node * next;
 } typedLinkedList_t;
 
-// ToDo
 dispatch_queue_t *dispatch_queue_create(queue_type_t queueType) {
     dispatch_queue_t queue;
     queue.queue_type = queueType;
 }
 
-// ToDo
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    return null;
+    return free(*queue);
 }
 
 // ToDo
