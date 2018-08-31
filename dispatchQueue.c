@@ -40,7 +40,7 @@ void dispatch_async(dispatch_queue_t *queue, task_t *task) {
             dispatch_concurrent_async(task);
 
         case SERIAL:
-            dispatch_serial_async( task);
+            dispatch_serial_async(task);
 
         // If the dispatch type is neither concurrent nor serial then exit the program with failure status
         default:
@@ -49,7 +49,7 @@ void dispatch_async(dispatch_queue_t *queue, task_t *task) {
 }
 
 void dispatch_concurrent_async(task_t *task) {
-    
+    sem_post(task);
 }
 
 void dispatch_serial_async(task_t *task) {
