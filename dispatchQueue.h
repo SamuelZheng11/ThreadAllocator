@@ -48,6 +48,7 @@
         struct sll_node *nodeHead;  // first item in the linked list
         pthread_mutex_t mutex;      // mutex associated with this queue
         sem_t semaphore;            // the semaphore the thread waits on until a task is allocated
+        int busy_threads;           // number of activly threads working on a task from this queue
     };
     
     task_t *task_create(void (*)(void *), void *, char*);
