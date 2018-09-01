@@ -91,6 +91,10 @@ void dispatch_queue_destroy(dispatch_queue_t *queue) {
     pthread_mutex_destroy(&queue->mutex);
 }
 
+void destroy_task(task_t *task) {
+    free(task);
+}
+
 task_t *task_create(void (* work)(void *), void *param, char* name) {
     // allocate memeory for the tast and populate the structure
     task_t *task = (task_t *) malloc(sizeof(task_t));
