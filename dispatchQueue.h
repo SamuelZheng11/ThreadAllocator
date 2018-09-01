@@ -31,6 +31,11 @@
     typedef struct dispatch_queue_t dispatch_queue_t; // the dispatch queue type
     typedef struct dispatch_queue_thread_t dispatch_queue_thread_t; // the dispatch queue thread type
 
+    typedef struct {
+        task_t task;            // the task to be executed
+        struct sllNode *next;   // link to the next item in the linked list
+    } sllNode;                  // singly linked list
+
     struct dispatch_queue_thread_t {
         dispatch_queue_t *queue;// the queue this thread is associated with
         pthread_t thread;       // the thread which runs the task
@@ -40,6 +45,7 @@
 
     struct dispatch_queue_t {
         queue_type_t queue_type;            // the type of queue - serial or concurrent
+        sllNode *nodeHead;                      // first item in the linked list
     };
     
     task_t *task_create(void (*)(void *), void *, char*);
