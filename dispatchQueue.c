@@ -68,8 +68,26 @@ void *perform_tasks_concurrently(void *param){
     }
 }
 
-void perform_tasks_serially() {
-    
+// method that each thread calls when they run concurrently
+void *perform_tasks_serially(void *param){
+    // case to dispatch queue to prevent compiler warnings
+    dispatch_queue_t *queue = (dispatch_queue_t*) param;
+    // poll indefinatly
+    while(1){
+        sem_wait(&queue->semaphore);
+        // update the queue's active thread counter and aquire mutex lock
+        pthread_mutex_lock(&queue->mutex);
+        queue->busy_threads = queue->busy_threads + 1;
+        // dequeuing a task from the queue and release the lock
+        sll_node *targetNode = pop_dispatch_queue(queue);
+        // performing task with task params
+        targetNode->task.work(targetNode->task.params);
+        // release memory
+        destroy_task(&targetNode->task);
+        // decrement active thread on the queue as this thread is finished
+        queue->busy_threads = queue->busy_threads - 1;
+        pthread_mutex_unlock(&queue->mutex);
+    }
 }
 
 void generate_threads(dispatch_queue_t *queue, queue_type_t queue_type) {
@@ -83,7 +101,8 @@ void generate_threads(dispatch_queue_t *queue, queue_type_t queue_type) {
             break;
 
         case SERIAL:
-            
+            pthread_create(thread , NULL, perform_tasks_serially, queue);
+
         }
     }
 }
@@ -120,6 +139,14 @@ task_t *task_create(void (* work)(void *), void *param, char* name) {
 }
 
 void dispatch_concurrent_async(dispatch_queue_t *queue, task_t *task) {
+}
+
+int dispatch_sync(dispatch_queue_t *queue, task_t *task){
+    return 0;
+}
+
+// the header specifies a int as the return value so that is what is done here, even thought the integer return value is never used
+int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // lock queue
     pthread_mutex_lock(&queue->mutex);
 
@@ -135,40 +162,6 @@ void dispatch_concurrent_async(dispatch_queue_t *queue, task_t *task) {
     
     // notify semaphore that new tasks avalible
     sem_post(&queue->semaphore);
-}
-
-void dispatch_serial_async(dispatch_queue_t *queue, task_t *task) {
-    if(queue->nodeHead == NULL) {
-        push_head_on_queue(queue, task);
-    } else {
-        push_dispatch_queue(queue, *task);
-    }
-    
-
-}
-
-int dispatch_sync(dispatch_queue_t *queue, task_t *task){
-    return 0;
-}
-
-// the header specifies a int as the return value so that is what is done here, even thought the integer return value is never used
-int dispatch_async(dispatch_queue_t *queue, task_t *task) {
-
-    // break statements needed otherwise C will execute all enum cases (ie both concurrent and serial are executed)
-    switch(queue->queue_type) {
-    case CONCURRENT:
-        dispatch_concurrent_async(queue, task);
-        break;
-
-    case SERIAL:
-        dispatch_serial_async(queue, task);
-        break;
-
-    // If the dispatch type is neither concurrent nor serial then exit the program with failure status
-    default:
-        exit(EXIT_FAILURE);
-    }
-
     return 0;
 }
 
@@ -184,9 +177,9 @@ void dispatch_for(dispatch_queue_t *queue, long number, void (*work) (long)) {
     char id;
     char names[10][2];
     for(id = 0; id < number; id++){
-        // char *name = names[id - 'A'];
-        // name[0] = id; name[1] = '\0';
-        // task = task_create(work, (void *)name, name);
-        // dispatch_async(queue, task);
+        char *name = names[id - 'A'];
+        name[0] = id; name[1] = '\0';
+        task = task_create(work, (void *)name, name);
+        dispatch_async(queue, task);
     }
 }
