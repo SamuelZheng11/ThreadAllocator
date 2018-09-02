@@ -40,6 +40,7 @@
     struct dispatch_queue_thread_t {
         dispatch_queue_t *queue;    // the queue this thread is associated with
         pthread_t thread;           // the thread which runs the task
+        sem_t thread_semaphore; // the semaphore the thread waits on until a task is allocated
         task_t *task;               // the current task for this tread
     };
 
@@ -47,7 +48,6 @@
         queue_type_t queue_type;    // the type of queue - serial or concurrent
         struct sll_node *nodeHead;  // first item in the linked list
         pthread_mutex_t mutex;      // mutex associated with this queue
-        sem_t semaphore;            // the semaphore the thread waits on until a task is allocated
         int busy_threads;           // number of activly threads working on a task from this queue
     };
     
