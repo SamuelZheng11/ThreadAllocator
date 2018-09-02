@@ -34,8 +34,20 @@ void push_head_on_queue(dispatch_queue_t *queue, task_t *task){
     queue->nodeHead = head;
 }
 
-// method that each thread calls when they run
-void *perform_tasks(void *param){
+// method that releases the queue, semaphore and mutex lock memory when called
+void dispatch_queue_destroy(dispatch_queue_t *queue) {
+    free(queue);
+    sem_destroy(&queue->semaphore);
+    pthread_mutex_destroy(&queue->mutex);
+}
+
+// method that releases the memeory of a task when executed
+void destroy_task(task_t *task) {
+    free(task);
+}
+
+// method that each thread calls when they run concurrently
+void *perform_tasks_concurrently(void *param){
     // case to dispatch queue to prevent compiler warnings
     dispatch_queue_t *queue = (dispatch_queue_t*) param;
     // poll indefinatly
@@ -50,18 +62,29 @@ void *perform_tasks(void *param){
         // performing task with task params
         targetNode->task.work(targetNode->task.params);
         // release memory
-        free(targetNode);
+        destroy_task(&targetNode->task);
         // decrement active thread on the queue as this thread is finished
         queue->busy_threads = queue->busy_threads - 1;
     }
 }
 
-void generate_threads(dispatch_queue_t *queue) {
+void perform_tasks_serially() {
+    
+}
+
+void generate_threads(dispatch_queue_t *queue, queue_type_t queue_type) {
     // generate threads and execute the tasks on the semaphore queue
     int i;
     for(i = 0; i < get_nprocs_conf(); i++){
         pthread_t *thread = (pthread_t *) malloc(sizeof(pthread_t));
-        pthread_create(thread , NULL, perform_tasks, queue);
+        switch(queue_type) {
+        case CONCURRENT:
+            pthread_create(thread , NULL, perform_tasks_concurrently, queue);
+            break;
+
+        case SERIAL:
+            
+        }
     }
 }
 
@@ -70,29 +93,18 @@ dispatch_queue_t *dispatch_queue_create(queue_type_t queue_type) {
     sem_t semaphore;
     pthread_mutex_t mutex;
     dispatch_queue_t *queue = (dispatch_queue_t *) malloc(sizeof(dispatch_queue_t));
-
     // putting them into the struct
     queue->queue_type = queue_type;
     queue->semaphore = semaphore;
     queue->mutex = mutex;
-
     // create a semaphore & mutex lock
-    sem_init(&semaphore, 0, 0);
-    pthread_mutex_init(&mutex, NULL);
+    sem_init(&queue->semaphore, 0, 0);
+    pthread_mutex_init(&queue->mutex, NULL);
 
-    generate_threads(queue);
+    //generate threads
+    generate_threads(queue, queue_type);
 
     return queue;
-}
-
-void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    free(queue);
-    sem_destroy(&queue->semaphore);
-    pthread_mutex_destroy(&queue->mutex);
-}
-
-void destroy_task(task_t *task) {
-    free(task);
 }
 
 task_t *task_create(void (* work)(void *), void *param, char* name) {
@@ -101,6 +113,7 @@ task_t *task_create(void (* work)(void *), void *param, char* name) {
     *task->name = *name;
     task->work = work;
     task->params = param;
+
     // This is never used but for best practice a default of ASYNC is assigned
     task->type = ASYNC;
     return task;
@@ -125,7 +138,13 @@ void dispatch_concurrent_async(dispatch_queue_t *queue, task_t *task) {
 }
 
 void dispatch_serial_async(dispatch_queue_t *queue, task_t *task) {
+    if(queue->nodeHead == NULL) {
+        push_head_on_queue(queue, task);
+    } else {
+        push_dispatch_queue(queue, *task);
+    }
     
+
 }
 
 int dispatch_sync(dispatch_queue_t *queue, task_t *task){
@@ -136,7 +155,7 @@ int dispatch_sync(dispatch_queue_t *queue, task_t *task){
 int dispatch_async(dispatch_queue_t *queue, task_t *task) {
 
     // break statements needed otherwise C will execute all enum cases (ie both concurrent and serial are executed)
-    switch(queue->queue_type){
+    switch(queue->queue_type) {
     case CONCURRENT:
         dispatch_concurrent_async(queue, task);
         break;
@@ -161,5 +180,13 @@ int dispatch_queue_wait(dispatch_queue_t *queue) {
 }
 
 void dispatch_for(dispatch_queue_t *queue, long number, void (*work) (long)) {
-
+    task_t *task;
+    char id;
+    char names[10][2];
+    for(id = 0; id < number; id++){
+        // char *name = names[id - 'A'];
+        // name[0] = id; name[1] = '\0';
+        // task = task_create(work, (void *)name, name);
+        // dispatch_async(queue, task);
+    }
 }
