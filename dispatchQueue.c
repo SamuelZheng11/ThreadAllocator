@@ -112,7 +112,6 @@ void dispatch_concurrent_async(dispatch_queue_t *queue, task_t *task) {
 
     // check if the head of the linked list is assigned, if not assign the incoming task as the head of the queue
     if(queue->nodeHead == NULL) {
-        return;
         push_head_on_queue(queue, task);
     } else {
         push_dispatch_queue(queue, *task);
@@ -156,7 +155,7 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
 
 int dispatch_queue_wait(dispatch_queue_t *queue) {
     while(queue->nodeHead != NULL || queue->busy_threads > 0){
-        // block until no more activly working threads and there are no more tasks on the queue
+        // block until there are no more active theads on the queue and there are no more tasks on the queue
     }
     return 0;
 }
