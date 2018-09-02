@@ -47,46 +47,40 @@ void destroy_task(task_t *task) {
 }
 
 // method that each thread calls when they run concurrently
-void *perform_tasks_concurrently(void *param){
+void *perform_tasks(void *param){
     // case to dispatch queue to prevent compiler warnings
     dispatch_queue_t *queue = (dispatch_queue_t*) param;
-    // poll indefinatly
-    while(1){
-        sem_wait(&queue->semaphore);
-        // update the queue's active thread counter and aquire mutex lock
-        pthread_mutex_lock(&queue->mutex);
-        queue->busy_threads = queue->busy_threads + 1;
-        // dequeuing a task from the queue and release the lock
-        sll_node *targetNode = pop_dispatch_queue(queue);
-        pthread_mutex_unlock(&queue->mutex);
-        // performing task with task params
-        targetNode->task.work(targetNode->task.params);
-        // release memory
-        destroy_task(&targetNode->task);
-        // decrement active thread on the queue as this thread is finished
-        queue->busy_threads = queue->busy_threads - 1;
-    }
-}
 
-// method that each thread calls when they run concurrently
-void *perform_tasks_serially(void *param){
-    // case to dispatch queue to prevent compiler warnings
-    dispatch_queue_t *queue = (dispatch_queue_t*) param;
     // poll indefinatly
     while(1){
         sem_wait(&queue->semaphore);
         // update the queue's active thread counter and aquire mutex lock
         pthread_mutex_lock(&queue->mutex);
         queue->busy_threads = queue->busy_threads + 1;
-        // dequeuing a task from the queue and release the lock
+        // dequeuing a task from the queue
         sll_node *targetNode = pop_dispatch_queue(queue);
-        // performing task with task params
-        targetNode->task.work(targetNode->task.params);
-        // release memory
-        destroy_task(&targetNode->task);
-        // decrement active thread on the queue as this thread is finished
-        queue->busy_threads = queue->busy_threads - 1;
-        pthread_mutex_unlock(&queue->mutex);
+
+        switch(queue->queue_type) {
+        case CONCURRENT:
+            // In the case of a concurrent queue, release the lock before performing the task
+            pthread_mutex_unlock(&queue->mutex);
+            targetNode->task.work(targetNode->task.params);
+            // release memory
+            destroy_task(&targetNode->task);
+            // decrement active thread on the queue as this thread is finished
+            queue->busy_threads = queue->busy_threads - 1;
+            break;
+    
+        case SERIAL:
+            // In the case of a serial queue, release the lock after performing the task
+            targetNode->task.work(targetNode->task.params);
+            // release memory
+            destroy_task(&targetNode->task);
+            // decrement active thread on the queue as this thread is finished & release lock
+            queue->busy_threads = queue->busy_threads - 1;
+            pthread_mutex_unlock(&queue->mutex);
+            break;
+        }
     }
 }
 
@@ -95,15 +89,8 @@ void generate_threads(dispatch_queue_t *queue, queue_type_t queue_type) {
     int i;
     for(i = 0; i < get_nprocs_conf(); i++){
         pthread_t *thread = (pthread_t *) malloc(sizeof(pthread_t));
-        switch(queue_type) {
-        case CONCURRENT:
-            pthread_create(thread , NULL, perform_tasks_concurrently, queue);
-            break;
+        pthread_create(thread , NULL, perform_tasks, queue);
 
-        case SERIAL:
-            pthread_create(thread , NULL, perform_tasks_serially, queue);
-
-        }
     }
 }
 
@@ -112,25 +99,26 @@ dispatch_queue_t *dispatch_queue_create(queue_type_t queue_type) {
     sem_t semaphore;
     pthread_mutex_t mutex;
     dispatch_queue_t *queue = (dispatch_queue_t *) malloc(sizeof(dispatch_queue_t));
+
     // putting them into the struct
     queue->queue_type = queue_type;
     queue->semaphore = semaphore;
     queue->mutex = mutex;
+
     // create a semaphore & mutex lock
     sem_init(&queue->semaphore, 0, 0);
     pthread_mutex_init(&queue->mutex, NULL);
 
     //generate threads
     generate_threads(queue, queue_type);
-
     return queue;
 }
 
-task_t *task_create(void (* work)(void *), void *param, char* name) {
+task_t *task_create(void (* work)(void *), void *param, char *name) {
     // allocate memeory for the tast and populate the structure
     task_t *task = (task_t *) malloc(sizeof(task_t));
     *task->name = *name;
-    task->work = work;
+    task->work = (void (*)(void *))work;
     task->params = param;
 
     // This is never used but for best practice a default of ASYNC is assigned
@@ -138,10 +126,11 @@ task_t *task_create(void (* work)(void *), void *param, char* name) {
     return task;
 }
 
-void dispatch_concurrent_async(dispatch_queue_t *queue, task_t *task) {
-}
-
+//peform task on the thread that calls it
 int dispatch_sync(dispatch_queue_t *queue, task_t *task){
+    // perform the task then destory it
+    task->work(task->params);
+    destroy_task(task);
     return 0;
 }
 
@@ -173,13 +162,16 @@ int dispatch_queue_wait(dispatch_queue_t *queue) {
 }
 
 void dispatch_for(dispatch_queue_t *queue, long number, void (*work) (long)) {
-    task_t *task;
-    char id;
-    char names[10][2];
-    for(id = 0; id < number; id++){
+    int id;
+    char names[number][2];  // because these are going to be parameters to tasks they have to hang around
+    for(id = 'A'; id < 'A' + number; id++){
         char *name = names[id - 'A'];
-        name[0] = id; name[1] = '\0';
-        task = task_create(work, (void *)name, name);
+        name[0] = id; 
+        name[1] = '\0';
+        long param_value = id - 'A';
+        task_t *task = task_create((void *)work, (void *)param_value, name);
         dispatch_async(queue, task);
     }
+    dispatch_queue_wait(queue);
+    dispatch_queue_destroy(queue);
 }
