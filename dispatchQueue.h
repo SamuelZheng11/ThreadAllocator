@@ -40,7 +40,7 @@
     struct dispatch_queue_thread_t {
         dispatch_queue_t *queue;    // the queue this thread is associated with
         pthread_t thread;           // the thread which runs the task
-        sem_t thread_semaphore; // the semaphore the thread waits on until a task is allocated
+        sem_t thread_semaphore;     // the semaphore the thread waits on until a task is allocated
         task_t *task;               // the current task for this tread
     };
 
