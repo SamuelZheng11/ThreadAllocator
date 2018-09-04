@@ -36,8 +36,10 @@ void push_head_on_queue(dispatch_queue_t *queue, task_t *task){
 
 // method that releases the queue, semaphore and mutex lock memory when called
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    free(queue);
     pthread_mutex_destroy(&queue->mutex);
+    sem_destroy(&queue->all_done_semaphore);
+    sem_destroy(&queue->queue_semaphore);
+    free(queue);
 }
 
 // method that releases the memeory of a task when executed
@@ -48,26 +50,33 @@ void destroy_task(task_t *task) {
 // method that each thread calls when they run concurrently
 void *perform_tasks(void *param){
     // case to dispatch queue to prevent compiler warnings
-    dispatch_queue_thread_t *d_q_thread = (dispatch_queue_thread_t*) param;
+    dispatch_queue_t *queue = (dispatch_queue_t*) param;
 
     // poll indefinatly
-    while(1){
-        sem_wait(&d_q_thread->thread_semaphore);
-        // update the queue's active thread counter and aquire mutex lock
-        pthread_mutex_lock(&d_q_thread->queue->mutex);
-        d_q_thread->queue->busy_threads = d_q_thread->queue->busy_threads + 1;
-        // dequeuing a task from the queue
-        sll_node *targetNode = pop_dispatch_queue(d_q_thread->queue);
+    while(1) {
+        // wait until more tasks are push to queue
+        sem_wait(&queue->queue_semaphore);
 
-        switch(d_q_thread->queue->queue_type) {
+        //check if termination condition has been met; break if met
+        if(queue->terminate_condition == 1){
+            break;
+        }
+
+        // update the queue's active thread counter and aquire mutex lock
+        pthread_mutex_lock(&queue->mutex);
+        queue->busy_threads = queue->busy_threads + 1;
+        // dequeuing a task from the queue
+        sll_node *targetNode = pop_dispatch_queue(queue);
+
+        switch(queue->queue_type) {
         case CONCURRENT:
             // In the case of a concurrent queue, release the lock before performing the task
-            pthread_mutex_unlock(&d_q_thread->queue->mutex);
+            pthread_mutex_unlock(&queue->mutex);
             targetNode->task.work(targetNode->task.params);
             // release memory
             destroy_task(&targetNode->task);
             // decrement active thread on the queue as this thread is finished
-            d_q_thread->queue->busy_threads = d_q_thread->queue->busy_threads - 1;
+            queue->busy_threads = queue->busy_threads - 1;
             break;
     
         case SERIAL:
@@ -76,44 +85,52 @@ void *perform_tasks(void *param){
             // release memory
             destroy_task(&targetNode->task);
             // decrement active thread on the queue as this thread is finished & release lock
-            d_q_thread->queue->busy_threads = d_q_thread->queue->busy_threads - 1;
-            pthread_mutex_unlock(&d_q_thread->queue->mutex);
+            queue->busy_threads = queue->busy_threads - 1;
+            pthread_mutex_unlock(&queue->mutex);
             break;
         }
+        
+        if(queue->nodeHead == NULL && queue->busy_threads == 0){
+            sem_post(&queue->all_done_semaphore);
+        }
     }
+    //should any threads still exist after the parent thread is killed then this statement will kill it
+    pthread_exit(EXIT_SUCCESS);
 }
 
-void generate_threads(dispatch_queue_thread_t *d_q_thread, queue_type_t queue_type) {
+void generate_threads(dispatch_queue_t *queue, queue_type_t queue_type) {
     // generate threads and execute the tasks on the semaphore queue
     int i;
     for(i = 0; i < get_nprocs_conf(); i++){
         pthread_t *thread = (pthread_t *) malloc(sizeof(pthread_t));
-        pthread_create(thread , NULL, perform_tasks, d_q_thread);
+        pthread_create(thread , NULL, perform_tasks, queue);
 
     }
 }
 
 dispatch_queue_t *dispatch_queue_create(queue_type_t queue_type) {
     // delearing variables to put in the structure
-    sem_t semaphore;
+    sem_t queue_semaphore;
+    sem_t all_done_semaphore;
     pthread_mutex_t mutex;
     dispatch_queue_t *queue = (dispatch_queue_t *) malloc(sizeof(dispatch_queue_t));
-    dispatch_queue_thread_t *d_q_thread = (dispatch_queue_thread_t*) malloc(sizeof(dispatch_queue_thread_t));
 
     // set up dispatch queue
     queue->queue_type = queue_type;
     queue->mutex = mutex;
+    queue->terminate_condition = 0;
 
     // set up dispatch queue thread
-    d_q_thread->thread_semaphore = semaphore;
-    d_q_thread->queue = queue;
+    queue->queue_semaphore = queue_semaphore;
+    queue->all_done_semaphore = all_done_semaphore;
 
     // create a semaphore & mutex lock
-    sem_init(&d_q_thread->thread_semaphore, 0, 0);
+    sem_init(&queue->queue_semaphore, 0, 0);
+    sem_init(&queue->all_done_semaphore, 0, 0);
     pthread_mutex_init(&queue->mutex, NULL);
 
     //generate threads
-    generate_threads(d_q_thread, queue_type);
+    generate_threads(queue, queue_type);
     return queue;
 }
 
@@ -131,7 +148,7 @@ task_t *task_create(void (* work)(void *), void *param, char *name) {
 
 //peform task on the thread that calls it
 int dispatch_sync(dispatch_queue_t *queue, task_t *task){
-    // perform the task then destory it
+    // perform the task then destroy it
     task->work(task->params);
     destroy_task(task);
     return 0;
@@ -153,13 +170,18 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     pthread_mutex_unlock(&queue->mutex);
     
     // notify semaphore that new tasks avalible
-    sem_post(&queue->semaphore);
+    sem_post(&queue->queue_semaphore);
     return 0;
 }
 
 int dispatch_queue_wait(dispatch_queue_t *queue) {
-    while(queue->nodeHead != NULL || queue->busy_threads > 0){
-        // block until there are no more active theads on the queue and there are no more tasks on the queue
+    // block until there are no more active theads on the queue and there are no more tasks on the queue
+    sem_wait(&queue->all_done_semaphore);
+    // flush all waiting works waiting on the queue semaphore
+    queue->terminate_condition = 1;
+    int index;
+    for(index = 0; index < get_nprocs_conf(); index++) {
+        sem_post(&queue->queue_semaphore);
     }
     return 0;
 }

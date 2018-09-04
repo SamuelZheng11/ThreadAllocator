@@ -48,6 +48,9 @@
         queue_type_t queue_type;    // the type of queue - serial or concurrent
         struct sll_node *nodeHead;  // first item in the linked list
         pthread_mutex_t mutex;      // mutex associated with this queue
+        sem_t queue_semaphore;      // the semaphore on the queue to notify threads when a task is ready
+        sem_t all_done_semaphore;   // semaphore used to notify the main thread that all tasks are completed
+        int terminate_condition;    // condition used to determine whether or not the queue workers should terminate and shutdown
         int busy_threads;           // number of activly threads working on a task from this queue
     };
     
