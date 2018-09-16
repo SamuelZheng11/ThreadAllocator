@@ -36,7 +36,11 @@ void push_head_on_queue(dispatch_queue_t *queue, task_t *task){
 
 // method that releases the queue, semaphore and queue_mutex lock memory when called
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    pthread_queue_mutex_destroy(&queue->queue_mutex);
+    // destroy mutexs
+    pthread_mutex_destroy(&queue->queue_mutex);
+    pthread_mutex_destroy(&queue->busy_thread_mutex);
+
+    // destory semaphores
     sem_destroy(&queue->all_done_semaphore);
     sem_destroy(&queue->queue_semaphore);
     free(queue);
@@ -135,8 +139,8 @@ dispatch_queue_t *dispatch_queue_create(queue_type_t queue_type) {
     // create a semaphore & queue_mutex lock
     sem_init(&queue->queue_semaphore, 0, 0);
     sem_init(&queue->all_done_semaphore, 0, 0);
-    pthread_queue_mutex_init(&queue->queue_mutex, NULL);
-    pthread_queue_mutex_init(&queue->busy_thread_mutex, NULL);
+    pthread_mutex_init(&queue->queue_mutex, NULL);
+    pthread_mutex_init(&queue->busy_thread_mutex, NULL);
 
     //generate threads
     generate_threads(queue, queue_type);
@@ -166,7 +170,7 @@ int dispatch_sync(dispatch_queue_t *queue, task_t *task){
 // the header specifies a int as the return value so that is what is done here, even thought the integer return value is never used
 int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // lock queue
-    pthread_queue_mutex_lock(&queue->queue_mutex);
+    pthread_mutex_lock(&queue->queue_mutex);
 
     // check if the head of the linked list is assigned, if not assign the incoming task as the head of the queue
     if(queue->nodeHead == NULL) {
@@ -176,7 +180,7 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     }
     
     // unlock queue
-    pthread_queue_mutex_unlock(&queue->queue_mutex);
+    pthread_mutex_unlock(&queue->queue_mutex);
     
     // notify semaphore that new tasks avalible
     sem_post(&queue->queue_semaphore);
