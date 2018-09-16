@@ -34,9 +34,9 @@ void push_head_on_queue(dispatch_queue_t *queue, task_t *task){
     queue->nodeHead = head;
 }
 
-// method that releases the queue, semaphore and mutex lock memory when called
+// method that releases the queue, semaphore and queue_mutex lock memory when called
 void dispatch_queue_destroy(dispatch_queue_t *queue) {
-    pthread_mutex_destroy(&queue->mutex);
+    pthread_queue_mutex_destroy(&queue->queue_mutex);
     sem_destroy(&queue->all_done_semaphore);
     sem_destroy(&queue->queue_semaphore);
     free(queue);
@@ -62,21 +62,26 @@ void *perform_tasks(void *param){
             break;
         }
 
-        // update the queue's active thread counter and aquire mutex lock
-        pthread_mutex_lock(&queue->mutex);
+        // update the queue's active thread counter and aquire queue_mutex lock
+        pthread_mutex_lock(&queue->queue_mutex);
+        pthread_mutex_lock(&queue->busy_thread_mutex);        
         queue->busy_threads = queue->busy_threads + 1;
+        pthread_mutex_unlock(&queue->busy_thread_mutex);
+        
         // dequeuing a task from the queue
         sll_node *targetNode = pop_dispatch_queue(queue);
 
         switch(queue->queue_type) {
         case CONCURRENT:
             // In the case of a concurrent queue, release the lock before performing the task
-            pthread_mutex_unlock(&queue->mutex);
+            pthread_mutex_unlock(&queue->queue_mutex);
             targetNode->task.work(targetNode->task.params);
             // release memory
             destroy_task(&targetNode->task);
             // decrement active thread on the queue as this thread is finished
+            pthread_mutex_lock(&queue->busy_thread_mutex);        
             queue->busy_threads = queue->busy_threads - 1;
+            pthread_mutex_unlock(&queue->busy_thread_mutex);
             break;
     
         case SERIAL:
@@ -85,8 +90,10 @@ void *perform_tasks(void *param){
             // release memory
             destroy_task(&targetNode->task);
             // decrement active thread on the queue as this thread is finished & release lock
+            pthread_mutex_lock(&queue->busy_thread_mutex);        
             queue->busy_threads = queue->busy_threads - 1;
-            pthread_mutex_unlock(&queue->mutex);
+            pthread_mutex_unlock(&queue->busy_thread_mutex);
+            pthread_mutex_unlock(&queue->queue_mutex);
             break;
         }
         
@@ -112,22 +119,24 @@ dispatch_queue_t *dispatch_queue_create(queue_type_t queue_type) {
     // delearing variables to put in the structure
     sem_t queue_semaphore;
     sem_t all_done_semaphore;
-    pthread_mutex_t mutex;
+    pthread_mutex_t queue_mutex, busy_thread_mutex;
     dispatch_queue_t *queue = (dispatch_queue_t *) malloc(sizeof(dispatch_queue_t));
 
     // set up dispatch queue
     queue->queue_type = queue_type;
-    queue->mutex = mutex;
+    queue->queue_mutex = queue_mutex;
+    queue->busy_thread_mutex = busy_thread_mutex; 
     queue->terminate_condition = 0;
 
     // set up dispatch queue thread
     queue->queue_semaphore = queue_semaphore;
     queue->all_done_semaphore = all_done_semaphore;
 
-    // create a semaphore & mutex lock
+    // create a semaphore & queue_mutex lock
     sem_init(&queue->queue_semaphore, 0, 0);
     sem_init(&queue->all_done_semaphore, 0, 0);
-    pthread_mutex_init(&queue->mutex, NULL);
+    pthread_queue_mutex_init(&queue->queue_mutex, NULL);
+    pthread_queue_mutex_init(&queue->busy_thread_mutex, NULL);
 
     //generate threads
     generate_threads(queue, queue_type);
@@ -157,7 +166,7 @@ int dispatch_sync(dispatch_queue_t *queue, task_t *task){
 // the header specifies a int as the return value so that is what is done here, even thought the integer return value is never used
 int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     // lock queue
-    pthread_mutex_lock(&queue->mutex);
+    pthread_queue_mutex_lock(&queue->queue_mutex);
 
     // check if the head of the linked list is assigned, if not assign the incoming task as the head of the queue
     if(queue->nodeHead == NULL) {
@@ -167,7 +176,7 @@ int dispatch_async(dispatch_queue_t *queue, task_t *task) {
     }
     
     // unlock queue
-    pthread_mutex_unlock(&queue->mutex);
+    pthread_queue_mutex_unlock(&queue->queue_mutex);
     
     // notify semaphore that new tasks avalible
     sem_post(&queue->queue_semaphore);
